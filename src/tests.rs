@@ -183,3 +183,55 @@ fn specificity() {
     assert!(specificities[0] > specificities[2]);
     assert!(specificities[1] > specificities[2]);
 }
+
+#[test]
+fn pseudo_selectors() {
+    let html = include_str!("../test_data/bar.html");
+
+    let document = parse_html().one(html);
+    
+    // Contains
+    assert_eq!(document.select("div.copyright p:contains('All rights reserved')").unwrap().into_iter().count(), 1, "contains");
+    assert_eq!(document.select("div.copyright p:contains('all rights reserved')").unwrap().into_iter().count(), 0, "contains");
+    // Case Insensitive Contains
+    assert_eq!(document.select("div.copyright p:icontains(\"all rights reserved\")").unwrap().into_iter().count(), 1, "icontains");
+    assert_eq!(document.select("div.copyright p:icontains('ALL RigHts ReSeRved')").unwrap().into_iter().count(), 1, "icontains");
+    // Has
+    assert_eq!(document.select_first("div.copyright:has(p)").map(|t| t.name.local.to_string()), Ok("div".to_owned()), "has");
+    assert_eq!(document.select_first("div.copyright:has(p) p").map(|t| t.name.local.to_string()), Ok("p".to_owned()), "has");
+    assert!(document.select_first("div.copyright:has(a)").is_err(), "has");
+    // Has Not
+    assert_ne!(document.select(r##"li.menu-item:has-not('a[href="#"]')"##).unwrap().into_iter().count(), document.select("li.menu-item").unwrap().into_iter().count(), "has-not");
+    assert_ne!(document.select(r##"li.menu-item:has-not('a')"##).unwrap().into_iter().count(), document.select("li.menu-item").unwrap().into_iter().count(), "has-not");
+    // Empty
+    assert_eq!(document.select("p:empty").unwrap().into_iter().count(), 2, "empty");
+    assert_eq!(document.select("div:empty").unwrap().into_iter().count(), 13, "empty");
+    // Not Empty
+    assert_eq!(document.select("p:not-empty").unwrap().into_iter().count(), 25, "not-empty");
+    assert_eq!(document.select("div:not-empty").unwrap().into_iter().count(), 183, "not-empty");
+
+    // Nested Pseudo Selectors
+    assert_eq!(document.select(r#"div#manga-discussion:has('script:contains(\'jQuery\')')"#).unwrap().into_iter().count(), 1, "nested has contains");
+
+    // Edge Cases
+}
+
+#[test]
+fn parse_quirky() {
+    let html = include_str!("../test_data/m.html");
+
+    let document = parse_html().one(html);
+
+    let els = document.select("span.chapter-release-date").unwrap().into_iter().count();
+    assert_eq!(els, 61);
+
+    let els = document.select("span.chapter-release-date, span.chapter-time").unwrap();
+
+    for el in els {
+        let text = el.text_contents();
+        println!("{text}")
+    }
+
+
+    // Edge Cases
+}

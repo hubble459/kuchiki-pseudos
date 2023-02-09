@@ -1,8 +1,9 @@
 use crate::attributes::ExpandedName;
-use cssparser::{self, CowRcStr, ParseError, SourceLocation, ToCss};
-use html5ever::{LocalName, Namespace};
 use crate::iter::{NodeIterator, Select};
 use crate::node_data_ref::NodeDataRef;
+use crate::tree::{ElementData, Node, NodeData, NodeRef};
+use cssparser::{self, CowRcStr, ParseError, SourceLocation, ToCss};
+use html5ever::{LocalName, Namespace};
 use selectors::attr::{AttrSelectorOperation, CaseSensitivity, NamespaceConstraint};
 use selectors::context::QuirksMode;
 use selectors::parser::SelectorParseErrorKind;
@@ -11,7 +12,6 @@ use selectors::parser::{
 };
 use selectors::{self, matching, OpaqueElement};
 use std::fmt;
-use crate::tree::{ElementData, Node, NodeData, NodeRef};
 
 /// The definition of whitespace per CSS Selectors Level 3 § 4.
 ///
@@ -44,38 +44,50 @@ impl<'i> Parser<'i> for KuchikiParser {
     type Impl = KuchikiSelectors;
     type Error = SelectorParseErrorKind<'i>;
 
+    fn parse_non_ts_functional_pseudo_class<'t>(
+        &self,
+        name: CowRcStr<'i>,
+        arguments: &mut cssparser::Parser<'i, 't>,
+    ) -> Result<<Self::Impl as SelectorImpl>::NonTSPseudoClass, ParseError<'i, Self::Error>> {
+        use self::PseudoClass::*;
+
+        let text = arguments.expect_ident_or_string()?.to_string();
+
+        match name.to_ascii_lowercase().to_string().as_str() {
+            "has" => Ok(Has(text)),
+            "has-not" => Ok(HasNot(text)),
+            "contains" => Ok(Contains(text)),
+            "icontains" => Ok(CaseInsensitiveContains(text)),
+            _ => Err(arguments.new_custom_error(
+                SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
+            )),
+        }
+    }
+
     fn parse_non_ts_pseudo_class(
         &self,
         location: SourceLocation,
         name: CowRcStr<'i>,
     ) -> Result<PseudoClass, ParseError<'i, SelectorParseErrorKind<'i>>> {
         use self::PseudoClass::*;
-        if name.eq_ignore_ascii_case("any-link") {
-            Ok(AnyLink)
-        } else if name.eq_ignore_ascii_case("link") {
-            Ok(Link)
-        } else if name.eq_ignore_ascii_case("visited") {
-            Ok(Visited)
-        } else if name.eq_ignore_ascii_case("active") {
-            Ok(Active)
-        } else if name.eq_ignore_ascii_case("focus") {
-            Ok(Focus)
-        } else if name.eq_ignore_ascii_case("hover") {
-            Ok(Hover)
-        } else if name.eq_ignore_ascii_case("enabled") {
-            Ok(Enabled)
-        } else if name.eq_ignore_ascii_case("disabled") {
-            Ok(Disabled)
-        } else if name.eq_ignore_ascii_case("checked") {
-            Ok(Checked)
-        } else if name.eq_ignore_ascii_case("indeterminate") {
-            Ok(Indeterminate)
-        } else {
-            Err(
-                location.new_custom_error(SelectorParseErrorKind::UnsupportedPseudoClassOrElement(
-                    name,
-                )),
-            )
+
+        match name.to_ascii_lowercase().to_string().as_str() {
+            "any-link" => Ok(AnyLink),
+            "link" => Ok(Link),
+            "visited" => Ok(Visited),
+            "active" => Ok(Active),
+            "focus" => Ok(Focus),
+            "hover" => Ok(Hover),
+            "enabled" => Ok(Enabled),
+            "disabled" => Ok(Disabled),
+            "checked" => Ok(Checked),
+            "indeterminate" => Ok(Indeterminate),
+
+            "empty" => Ok(Empty),
+            "not-empty" => Ok(NotEmpty),
+            _ => Err(location.new_custom_error(
+                SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
+            )),
         }
     }
 }
@@ -92,6 +104,18 @@ pub enum PseudoClass {
     Disabled,
     Checked,
     Indeterminate,
+
+    // Custom
+    Empty,
+    NotEmpty,
+    /// Implementation of [:not(selector)] selector
+    HasNot(String),
+    /// Implementation of [:has(selector)] selector
+    Has(String),
+    /// Implementation of [:contains("value")] selector
+    Contains(String),
+    /// Implementation of [:icontains("value")] selector
+    CaseInsensitiveContains(String),
 }
 
 impl NonTSPseudoClass for PseudoClass {
@@ -102,7 +126,10 @@ impl NonTSPseudoClass for PseudoClass {
     }
 
     fn is_user_action_state(&self) -> bool {
-        matches!(*self, PseudoClass::Active | PseudoClass::Hover | PseudoClass::Focus)
+        matches!(
+            *self,
+            PseudoClass::Active | PseudoClass::Hover | PseudoClass::Focus
+        )
     }
 
     fn has_zero_specificity(&self) -> bool {
@@ -115,18 +142,30 @@ impl ToCss for PseudoClass {
     where
         W: fmt::Write,
     {
-        dest.write_str(match *self {
-            PseudoClass::AnyLink => ":any-link",
-            PseudoClass::Link => ":link",
-            PseudoClass::Visited => ":visited",
-            PseudoClass::Active => ":active",
-            PseudoClass::Focus => ":focus",
-            PseudoClass::Hover => ":hover",
-            PseudoClass::Enabled => ":enabled",
-            PseudoClass::Disabled => ":disabled",
-            PseudoClass::Checked => ":checked",
-            PseudoClass::Indeterminate => ":indeterminate",
-        })
+        dest.write_str(
+            match self.clone() {
+                PseudoClass::AnyLink => ":any-link".to_owned(),
+                PseudoClass::Link => ":link".to_owned(),
+                PseudoClass::Visited => ":visited".to_owned(),
+                PseudoClass::Active => ":active".to_owned(),
+                PseudoClass::Focus => ":focus".to_owned(),
+                PseudoClass::Hover => ":hover".to_owned(),
+                PseudoClass::Enabled => ":enabled".to_owned(),
+                PseudoClass::Disabled => ":disabled".to_owned(),
+                PseudoClass::Checked => ":checked".to_owned(),
+                PseudoClass::Indeterminate => ":indeterminate".to_owned(),
+
+                // Custom
+                PseudoClass::Empty => ":empty".to_owned(),
+                PseudoClass::NotEmpty => ":not-empty".to_owned(),
+                PseudoClass::Contains(selector) => format!(":contains({selector})"),
+                PseudoClass::CaseInsensitiveContains(selector) => format!(":icontains({selector})"),
+                PseudoClass::Has(selector) => format!(":has({selector})"),
+                PseudoClass::HasNot(selector) => format!(":has-not({selector})"),
+            }
+            .to_string()
+            .as_str(),
+        )
     }
 }
 
@@ -311,7 +350,8 @@ impl selectors::Element for NodeDataRef<ElementData> {
         F: FnMut(&Self, matching::ElementSelectorFlags),
     {
         use self::PseudoClass::*;
-        match *pseudo {
+
+        match pseudo.clone() {
             Active | Focus | Hover | Enabled | Disabled | Checked | Indeterminate | Visited => {
                 false
             }
@@ -323,14 +363,25 @@ impl selectors::Element for NodeDataRef<ElementData> {
                     )
                     && self.attributes.borrow().contains(local_name!("href"))
             }
+            Empty => self.is_empty(),
+            NotEmpty => !self.is_empty(),
+            HasNot(selector) => self.as_node().select_first(&selector).is_err(),
+            Has(selector) => self.as_node().select_first(&selector).is_ok(),
+            Contains(text) => self.text_contents().contains(&text),
+            CaseInsensitiveContains(text) => self
+                .text_contents()
+                .to_ascii_lowercase()
+                .contains(&text.to_ascii_lowercase()),
         }
     }
 }
 
 /// A pre-compiled list of CSS Selectors.
+#[derive(Clone)]
 pub struct Selectors(pub Vec<Selector>);
 
 /// A pre-compiled CSS Selector.
+#[derive(Clone)]
 pub struct Selector(GenericSelector<KuchikiSelectors>);
 
 /// The specificity of a selector.

@@ -362,7 +362,8 @@ filter_map_like_iterator! {
     TextNodes: NodeRef::into_text_ref, NodeRef => NodeDataRef<RefCell<String>>
 }
 
-/// An element iterator adaptor that yields elements maching given selectors.
+/// An element iterator adaptor that yields elements matching given selectors.
+#[derive(Debug, Clone)]
 pub struct Select<I, S = Selectors>
 where
     I: Iterator<Item = NodeDataRef<ElementData>>,
