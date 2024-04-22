@@ -21,12 +21,12 @@ static SELECTOR_WHITESPACE: &[char] = &[' ', '\t', '\n', '\r', '\x0C'];
 #[derive(Debug, Clone)]
 pub struct KuchikiSelectors;
 
+
 impl SelectorImpl for KuchikiSelectors {
-    type AttrValue = String;
+    type ExtraMatchingData<'a> = std::marker::PhantomData<&'a ()>;
+    type AttrValue = AttrValue;
     type Identifier = LocalName;
-    type ClassName = LocalName;
     type LocalName = LocalName;
-    type PartName = LocalName;
     type NamespacePrefix = LocalName;
     type NamespaceUrl = Namespace;
     type BorrowedNamespaceUrl = Namespace;
@@ -34,8 +34,6 @@ impl SelectorImpl for KuchikiSelectors {
 
     type NonTSPseudoClass = PseudoClass;
     type PseudoElement = PseudoElement;
-
-    type ExtraMatchingData = ();
 }
 
 struct KuchikiParser;
@@ -131,10 +129,6 @@ impl NonTSPseudoClass for PseudoClass {
             PseudoClass::Active | PseudoClass::Hover | PseudoClass::Focus
         )
     }
-
-    fn has_zero_specificity(&self) -> bool {
-        false
-    }
 }
 
 impl ToCss for PseudoClass {
@@ -169,10 +163,10 @@ impl ToCss for PseudoClass {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, ToCss)]
 pub enum PseudoElement {}
 
-impl<'a> ToCss for PseudoElement {
+impl ToCss for PseudoElement {
     fn to_css<W>(&self, _dest: &mut W) -> fmt::Result
     where
         W: fmt::Write,
@@ -256,11 +250,6 @@ impl selectors::Element for NodeDataRef<ElementData> {
     }
 
     #[inline]
-    fn exported_part(&self, _: &LocalName) -> Option<LocalName> {
-        None
-    }
-
-    #[inline]
     fn imported_part(&self, _: &LocalName) -> Option<LocalName> {
         None
     }
@@ -340,7 +329,7 @@ impl selectors::Element for NodeDataRef<ElementData> {
         match *pseudo {}
     }
 
-    fn match_non_ts_pseudo_class<F>(
+    fn match_non_ts_pseudo_class(
         &self,
         pseudo: &PseudoClass,
         _context: &mut matching::MatchingContext<KuchikiSelectors>,
@@ -373,6 +362,14 @@ impl selectors::Element for NodeDataRef<ElementData> {
                 .to_ascii_lowercase()
                 .contains(&text.to_ascii_lowercase()),
         }
+    }
+    
+    fn first_element_child(&self) -> Option<Self> {
+        todo!()
+    }
+    
+    fn apply_selector_flags(&self, flags: matching::ElementSelectorFlags) {
+        todo!()
     }
 }
 
